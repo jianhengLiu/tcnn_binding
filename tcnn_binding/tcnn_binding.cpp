@@ -82,10 +82,8 @@ torch::Tensor TCNNModuleFunction::forward(torch::autograd::AutogradContext *ctx,
   ctx->set_materialize_grads(false);
 
   auto p_binding_info = _binding_info.toCustomClass<TCNNInfo>();
-  auto tuple_output = p_binding_info->native_tcnn_module_->fwd(_input, _params);
-
-  auto native_ctx = std::move(std::get<0>(tuple_output));
-  auto output = std::move(std::get<1>(tuple_output));
+  auto [native_ctx, output] =
+      p_binding_info->native_tcnn_module_->fwd(_input, _params);
 
   ctx->save_for_backward({_input, _params, output});
   p_binding_info->native_ctx_ = std::move(native_ctx);
@@ -130,28 +128,22 @@ torch::autograd::tensor_list TCNNModuleFunctionBackward::forward(
   // with torch.no_grad():
   auto p_binding_info = _binding_info.toCustomClass<TCNNInfo>();
 
-  auto grad_mode = torch::GradMode::is_enabled();
-  torch::GradMode::set_enabled(false);
+  torch::NoGradGuard no_grad;
   auto scaled_grad = _doutput * p_binding_info->loss_scale_;
 
-  auto tuple_output = p_binding_info->native_tcnn_module_->bwd(
+  auto [input_grad, params_grad] = p_binding_info->native_tcnn_module_->bwd(
       p_binding_info->native_ctx_, _input, _params, _output, scaled_grad);
 
-  auto input_grad = std::get<0>(tuple_output);
-
-  if (input_grad.numel() == 0) {
-    input_grad = null_tensor_like(_input);
-  } else {
+  if (input_grad.defined()) {
     input_grad = input_grad / p_binding_info->loss_scale_;
-  }
-
-  auto params_grad = std::get<1>(tuple_output);
-  if (params_grad.numel() == 0) {
-    params_grad = null_tensor_like(_params);
   } else {
-    params_grad = params_grad / p_binding_info->loss_scale_;
+    input_grad = null_tensor_like(_input);
   }
-  torch::GradMode::set_enabled(grad_mode);
+  if (params_grad.defined()) {
+    params_grad = params_grad / p_binding_info->loss_scale_;
+  } else {
+    params_grad = null_tensor_like(_params);
+  }
   return {input_grad, params_grad};
 }
 
@@ -180,16 +172,19 @@ torch::autograd::tensor_list TCNNModuleFunctionBackward::backward(
 
   torch::GradMode::set_enabled(false);
   auto dinput_grad = grad_outputs[0];
-  auto tuple_output = p_binding_info->native_tcnn_module_->bwd_bwd_input(
-      p_binding_info->native_ctx_, input, params, dinput_grad, grad_output);
+  auto [doutput_grad, params_grad, input_grad] =
+      p_binding_info->native_tcnn_module_->bwd_bwd_input(
+          p_binding_info->native_ctx_, input, params, dinput_grad, grad_output);
 
   // # NOTE: be cautious when multiplying and dividing loss_scale
   // #       doutput_grad uses dinput_grad
   // #       params_grad  uses dinput_grad * doutput
   // #       input_grad   uses dinput_grad * doutput
-  auto doutput_grad = std::get<0>(tuple_output);
-  auto params_grad = std::get<1>(tuple_output) / p_binding_info->loss_scale_;
-  auto input_grad = std::get<2>(tuple_output) / p_binding_info->loss_scale_;
+  params_grad = params_grad.defined()
+                    ? params_grad / p_binding_info->loss_scale_
+                    : null_tensor_like(input);
+  input_grad = input_grad.defined() ? input_grad / p_binding_info->loss_scale_
+                                    : null_tensor_like(input);
   torch::GradMode::set_enabled(grad_mode);
   return {doutput_grad, input_grad, params_grad, torch::Tensor(),
           torch::Tensor()};
