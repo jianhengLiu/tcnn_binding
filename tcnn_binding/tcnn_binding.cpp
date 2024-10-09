@@ -63,7 +63,7 @@ TORCH_LIBRARY(tcnn_binding, m) {
   m.class_<TCNNInfo>("TCNNInfo").def(torch::init());
 }
 
-torch::Tensor null_tensor_like(torch::Tensor &tensor) {
+torch::Tensor null_tensor_like(const torch::Tensor &tensor) {
   return torch::empty(
       {}, torch::TensorOptions().dtype(tensor.dtype()).device(tensor.device()));
 }
@@ -76,9 +76,9 @@ torch::Tensor null_tensor_to_none(torch::Tensor &tensor) {
 }
 
 torch::Tensor TCNNModuleFunction::forward(torch::autograd::AutogradContext *ctx,
-                                          torch::Tensor _input,
-                                          torch::Tensor _params,
-                                          torch::IValue _binding_info) {
+                                          const torch::Tensor &_input,
+                                          const torch::Tensor &_params,
+                                          const torch::IValue &_binding_info) {
   ctx->set_materialize_grads(false);
 
   auto p_binding_info = _binding_info.toCustomClass<TCNNInfo>();
@@ -94,14 +94,15 @@ torch::Tensor TCNNModuleFunction::forward(torch::autograd::AutogradContext *ctx,
 torch::autograd::tensor_list
 TCNNModuleFunction::backward(torch::autograd::AutogradContext *ctx,
                              torch::autograd::variable_list grad_outputs) {
-  if (grad_outputs.empty()) {
+  auto doutput = grad_outputs[0];
+  // check if doutput is empty tensor
+  if (!doutput.defined()) {
     return {torch::Tensor(), torch::Tensor(), torch::Tensor()};
   }
 
-  if (!grad_outputs[0].is_cuda()) {
-    std::cout
-        << "BindingModuleFunction::backward: grad_outputs[0] is not on CUDA\n";
-    grad_outputs[0] = grad_outputs[0].cuda();
+  if (!doutput.is_cuda()) {
+    std::cout << "BindingModuleFunction::backward: doutput is not on CUDA\n";
+    doutput = doutput.cuda();
   }
   auto saved = ctx->get_saved_variables();
   auto input = saved[0];
@@ -109,7 +110,7 @@ TCNNModuleFunction::backward(torch::autograd::AutogradContext *ctx,
   auto output = saved[2];
 
   auto tuple_output = TCNNModuleFunctionBackward::apply(
-      grad_outputs[0], input, params, output, ctx->saved_data["binding_info"]);
+      doutput, input, params, output, ctx->saved_data["binding_info"]);
 
   auto input_grad = tuple_output[0];
   auto params_grad = tuple_output[1];
@@ -119,9 +120,9 @@ TCNNModuleFunction::backward(torch::autograd::AutogradContext *ctx,
 
 /* BindingModuleFunctionBackward */
 torch::autograd::tensor_list TCNNModuleFunctionBackward::forward(
-    torch::autograd::AutogradContext *ctx, torch::Tensor _doutput,
-    torch::Tensor _input, torch::Tensor _params, torch::Tensor _output,
-    torch::IValue _binding_info) {
+    torch::autograd::AutogradContext *ctx, const torch::Tensor &_doutput,
+    const torch::Tensor &_input, const torch::Tensor &_params,
+    const torch::Tensor &_output, const torch::IValue &_binding_info) {
 
   ctx->save_for_backward({_input, _params, _doutput});
   ctx->saved_data["binding_info"] = _binding_info;

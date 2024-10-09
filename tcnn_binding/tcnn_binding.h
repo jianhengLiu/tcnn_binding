@@ -16,8 +16,8 @@ https://pytorch.org/tutorials/advanced/torch_script_custom_classes.html#implemen
 struct TCNNModule : torch::nn::Module {
   TCNNModule() = default;
   TCNNModule(std::shared_ptr<tcnn_binding::Module> _p_native_tcnn_module,
-                const size_t &_n_input_dims,
-                const std::string &_name = "params", const int &_seed = 1337);
+             const size_t &_n_input_dims, const std::string &_name = "params",
+             const int &_seed = 1337);
   void init_module(std::shared_ptr<tcnn_binding::Module> _p_native_tcnn_module,
                    const size_t &_n_input_dims,
                    const std::string &_name = "params",
@@ -53,8 +53,9 @@ class TCNNModuleFunction
     : public torch::autograd::Function<TCNNModuleFunction> {
 public:
   static torch::Tensor forward(torch::autograd::AutogradContext *ctx,
-                               torch::Tensor _input, torch::Tensor _params,
-                               torch::IValue _binding_info);
+                               const torch::Tensor &_input,
+                               const torch::Tensor &_params,
+                               const torch::IValue &_binding_info);
 
   // TODO: there is possible double backward, check _module_function_backward
   static torch::autograd::tensor_list
@@ -66,9 +67,9 @@ class TCNNModuleFunctionBackward
     : public torch::autograd::Function<TCNNModuleFunctionBackward> {
 public:
   static torch::autograd::tensor_list
-  forward(torch::autograd::AutogradContext *ctx, torch::Tensor _doutput,
-          torch::Tensor _input, torch::Tensor _params, torch::Tensor _output,
-          torch::IValue _binding_info);
+  forward(torch::autograd::AutogradContext *ctx, const torch::Tensor &_doutput,
+          const torch::Tensor &_input, const torch::Tensor &_params,
+          const torch::Tensor &_output, const torch::IValue &_binding_info);
 
   static torch::autograd::tensor_list
   backward(torch::autograd::AutogradContext *ctx,
@@ -78,9 +79,9 @@ public:
 struct TCNNNetwork : TCNNModule {
   TCNNNetwork() = default;
   TCNNNetwork(size_t _n_input_dims, size_t _n_output_dims,
-                 const tcnn::cpp::json &_network_config,
-                 const std::string &_name = "network_params",
-                 const int &_seed = 1337);
+              const tcnn::cpp::json &_network_config,
+              const std::string &_name = "network_params",
+              const int &_seed = 1337);
 
   void init_network(size_t _n_input_dims, size_t _n_output_dims,
                     const tcnn::cpp::json &_network_config,
@@ -93,8 +94,8 @@ struct TCNNNetwork : TCNNModule {
 struct TCNNEncoding : TCNNModule {
   TCNNEncoding() = default;
   TCNNEncoding(size_t _n_input_dims, const tcnn::cpp::json &_encoding_config,
-                  const std::string &_name = "encoding_params",
-                  const int &_seed = 1337);
+               const std::string &_name = "encoding_params",
+               const int &_seed = 1337);
 
   void init_encoding(size_t _n_input_dims,
                      const tcnn::cpp::json &_encoding_config,
